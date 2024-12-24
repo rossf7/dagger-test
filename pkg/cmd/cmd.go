@@ -11,6 +11,16 @@ func Apply(manifest string) []string {
 	}
 }
 
+func Delete(manifest string) []string {
+	return []string{
+		"kubectl",
+		"delete",
+		"-f",
+		manifest,
+		"--wait",
+	}
+}
+
 func FluxInstall() []string {
 	return []string{
 		"flux",
@@ -37,36 +47,16 @@ func GetNodeNames() []string {
 	}
 }
 
-func LabelNode(nodeName string) []string {
-	return []string{
+func LabelNode(nodeName string, labels map[string]string) []string {
+	args := []string{
 		"kubectl",
 		"label",
 		nodeName,
-		"cncf-project=green-reviews",
-		"cncf-project-sub=internal",
 	}
-}
-
-func K3sManifests() []string {
-	return []string{
-		"/clusters/base/monitoring-namespace.yaml",
-		"/clusters/base",
+	for k, v := range labels {
+		args = append(args, fmt.Sprintf("%s=%s", k, v))
 	}
-}
-
-func K3sPatches() [][]string {
-	return [][]string{
-		Patch("helmrelease",
-			"kube-prometheus-stack",
-			"flux-system",
-			"/spec/values/prometheus-node-exporter",
-			`{"hostRootFsMount": {"enabled": false}}`),
-		Patch("helmrelease",
-			"kepler",
-			"flux-system",
-			"/spec/values/canMount",
-			`{"usrSrc": false}`),
-	}
+	return args
 }
 
 func Patch(resource, name, namespace, path, value string) []string {
@@ -89,11 +79,11 @@ func WaitForNamespace(namespace string) []string {
 		"wait",
 		"pod",
 		"--all",
+		"--namespace",
+		namespace,
 		"--timeout",
 		"300s",
 		"--for",
 		"condition=Ready",
-		"--namespace",
-		namespace,
 	}
 }

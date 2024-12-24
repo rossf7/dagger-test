@@ -1,0 +1,46 @@
+name: Benchmark Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      cncf_project:
+        description: Project to be deployed e.g. falco
+        required: true
+        type: choice
+        options:
+          - falco
+      config:
+        description: Configuration if project has multiple variants they wish to test (defaults to all)
+        required: false
+        type: string
+      version:
+        description: Version of project to be tested e.g. 0.37.0
+        required: true
+        type: string
+      benchmark_job_url:
+        description: URL of the benchmark job
+        required: true
+        type: string
+      benchmark_job_duration_mins:
+        description: Duration of the benchmark job
+        required: true
+        type: number
+
+concurrency:
+  group: benchmark
+
+jobs:
+  pipeline:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dagger/dagger-for-github@v7
+        with:
+          version: "latest"
+          module: "."
+          args: benchmark-pipeline
+            --cncf-project='${{ inputs.cncf_project }}'
+            --config='${{ inputs.config }}'
+            --version='${{ inputs.version }}'
+            --benchmark-job-url='${{ inputs.benchmark_job_url }}'
+            --benchmark-job-duration-mins=${{ inputs.benchmark_job_duration_mins }}

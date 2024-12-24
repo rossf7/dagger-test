@@ -1,45 +1,111 @@
-// A generated module for DaggerTest functions
-//
-// This module has been generated via dagger init and serves as a reference to
-// basic module structure as you get started with Dagger.
-//
-// Two functions have been pre-created. You can modify, delete, or add to them,
-// as needed. They demonstrate usage of arguments and return types using simple
-// echo and grep commands. The functions can be called from the dagger CLI or
-// from one of the SDKs.
-//
-// The first line in this comment block is a short description line and the
-// rest is a long description with more detail on the module's purpose or usage,
-// if appropriate. All modules should have a short description.
-
 package main
 
 import (
 	"context"
+	"fmt"
+
 	"dagger/dagger-test/internal/dagger"
 	"dagger/dagger-test/pkg/pipeline"
 )
 
 const (
-	clusterName = "green-reviews"
+	clusterName = "green-reviews-test"
 )
 
 type DaggerTest struct{}
 
-func (m *DaggerTest) BootstrapCluster(ctx context.Context) (*dagger.Container, error) {
-	dir := dag.CurrentModule().Source()
-	container := build(ctx, dir)
+func (m *DaggerTest) BenchmarkPipeline(ctx context.Context,
+	cncfProject,
+	// +optional
+	config,
+	version,
+	benchmarkJobURL,
+	// +optional
+	kubeconfig string,
+	benchmarkJobDurationMins int) (*dagger.Container, error) {
+	p, err := newPipeline(ctx, kubeconfig)
+	if err != nil {
+		return nil, err
+	}
+	if kubeconfig == "" {
+		_, err = p.SetupCluster(ctx)
+		if err != nil {
+			return nil, err
+		}
+	}
 
-	k3s := dag.K3S(clusterName)
-	kServer := k3s.Server()
+	return p.Benchmark(ctx, cncfProject, config, version, benchmarkJobURL, benchmarkJobDurationMins)
+}
 
-	kServer, err := kServer.Start(ctx)
+func (m *DaggerTest) BenchmarkPipelineTest(ctx context.Context,
+	// +optional
+	// +default="falco"
+	cncfProject,
+	// +optional
+	// +default="modern-ebpf"
+	config,
+	// +optional
+	// +default="0.39.2"
+	version,
+	// +optional
+	// +default="https://raw.githubusercontent.com/falcosecurity/cncf-green-review-testing/e93136094735c1a52cbbef3d7e362839f26f4944/benchmark-tests/falco-benchmark-tests.yaml"
+	benchmarkJobURL,
+	// +optional
+	kubeconfig string,
+	// +optional
+	// +default=2
+	benchmarkJobDurationMins int) (*dagger.Container, error) {
+	p, err := newPipeline(ctx, kubeconfig)
+	if err != nil {
+		return nil, err
+	}
+	if kubeconfig == "" {
+		_, err = p.SetupCluster(ctx)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return p.Benchmark(ctx,
+		cncfProject,
+		config,
+		version,
+		benchmarkJobURL,
+		benchmarkJobDurationMins)
+}
+
+func (m *DaggerTest) SetupCluster(ctx context.Context,
+	// +optional
+	kubeconfig string) (*dagger.Container, error) {
+	p, err := newPipeline(ctx, kubeconfig)
 	if err != nil {
 		return nil, err
 	}
 
-	p := pipeline.New(container, dir, k3s.Config())
 	return p.SetupCluster(ctx)
+}
+
+func newPipeline(ctx context.Context, kubeconfig string) (*pipeline.Pipeline, error) {
+	var configFile *dagger.File
+	var err error
+
+	dir := dag.CurrentModule().Source()
+	container := build(ctx, dir)
+
+	if kubeconfig == "" {
+		configFile, err = startK3sCluster(ctx)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		configFile = dir.File(kubeconfig)
+		_, err = configFile.Contents(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get kubeconfig from %s must be in current directory", configFile)
+		}
+	}
+
+	return pipeline.New(container, dir, configFile)
 }
 
 func build(ctx context.Context, src *dagger.Directory) *dagger.Container {
@@ -48,4 +114,15 @@ func build(ctx context.Context, src *dagger.Directory) *dagger.Container {
 		WithWorkdir("/src").
 		Directory("/src").
 		DockerBuild()
+}
+
+func startK3sCluster(ctx context.Context) (*dagger.File, error) {
+	k3s := dag.K3S(clusterName)
+	kServer := k3s.Server()
+
+	kServer, err := kServer.Start(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return k3s.Config(), nil
 }
