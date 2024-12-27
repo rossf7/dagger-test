@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"os"
 
 	"dagger/dagger-test/internal/dagger"
 	"dagger/dagger-test/pkg/pipeline"
@@ -59,6 +59,7 @@ func (m *DaggerTest) BenchmarkPipelineTest(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
+
 	if kubeconfig == "" {
 		_, err = p.SetupCluster(ctx)
 		if err != nil {
@@ -90,7 +91,7 @@ func newPipeline(ctx context.Context, kubeconfig string) (*pipeline.Pipeline, er
 	var err error
 
 	dir := dag.CurrentModule().Source()
-	container := build(ctx, dir)
+	container := build(dir)
 
 	if kubeconfig == "" {
 		configFile, err = startK3sCluster(ctx)
@@ -98,22 +99,32 @@ func newPipeline(ctx context.Context, kubeconfig string) (*pipeline.Pipeline, er
 			return nil, err
 		}
 	} else {
-		configFile = dir.File(kubeconfig)
-		_, err = configFile.Contents(ctx)
+		configFile, err = getKubeconfig(kubeconfig)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get kubeconfig from %s must be in current directory", configFile)
+			return nil, err
 		}
 	}
 
 	return pipeline.New(container, dir, configFile)
 }
 
-func build(ctx context.Context, src *dagger.Directory) *dagger.Container {
+func build(src *dagger.Directory) *dagger.Container {
 	return dag.Container().
 		WithDirectory("/src", src).
 		WithWorkdir("/src").
 		Directory("/src").
 		DockerBuild()
+}
+
+func getKubeconfig(configFilePath string) (*dagger.File, error) {
+	contents, err := os.ReadFile(configFilePath)
+	if err != nil {
+		return nil, err
+	}
+
+	filePath := "/.kube/config"
+	dir := dag.Directory().WithNewFile(filePath, string(contents))
+	return dir.File(filePath), nil
 }
 
 func startK3sCluster(ctx context.Context) (*dagger.File, error) {
